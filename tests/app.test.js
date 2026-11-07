@@ -7,6 +7,7 @@ describe('API de tareas', () => {
 
   test('GET /health responde ok', async () => {
     const r = await request(app).get('/health');
+    //expect(r.status).toBe(200);
     expect(r.status).toBe(200);
     expect(r.body.estado).toBe('ok');
   });
