@@ -1,56 +1,108 @@
-# Plantilla DevOps — Electiva 1 (ITLA 2026-C-3)
+# Práctica 3 — Pipeline CI/CD con GitHub Actions
 
-Aplicación web mínima (lista de tareas) con todo lo necesario para practicar un pipeline **CI/CD** sin cuentas pagas ni Azure:
+**Estudiante:** Jean Carlos Ogando
+**Curso:** Electiva 1: Introducción a DevOps (ITLA 2026-C-3)
+**Repositorio:** https://github.com/Jean-carlos19/practica-cicd-github-actions
+**Sitio publicado:** https://jean-carlos19.github.io/practica-cicd-github-actions/
+
+## Descripción
+
+Aplicación web mínima (lista de tareas) con Node.js/Express, pruebas con Jest + Supertest, Dockerfile y un pipeline CI/CD en GitHub Actions que prueba la aplicación y despliega el frontend estático a GitHub Pages.
 
 | Pieza | Archivo | Para qué sirve |
 |---|---|---|
 | App Node.js/Express | `src/app.js`, `src/server.js` | API de tareas + `/health` y `/metrics` |
 | Frontend estático | `public/index.html` | Se publica en GitHub Pages |
-| Pruebas automatizadas | `tests/app.test.js` | Jest + Supertest con cobertura |
-| Contenedor | `Dockerfile` | Imagen de producción con *healthcheck* |
-| Pipeline | `.github/workflows/ci.yml` | Lint → pruebas → build Docker → deploy a Pages |
+| Pruebas | `tests/app.test.js` | Jest + Supertest con cobertura |
+| Contenedor | `Dockerfile` | Imagen de producción con healthcheck |
+| Pipeline | `.github/workflows/ci.yml` | Pruebas → build Docker → deploy a Pages |
 
-## Requisitos (gratis)
-- Cuenta de **GitHub** (usa un repositorio **público**: GitHub Actions es gratuito).
-- **Git** y **Node.js 20+**. Opcional para probar el contenedor en tu PC: **Docker Desktop**.
+## Ejecutar en local
 
-## Ejecutar en tu computadora
 ```bash
 npm install
 npm test          # pruebas + cobertura
 npm start         # http://localhost:3000
 ```
-Endpoints: `GET /health`, `GET /metrics`, `GET/POST /api/tareas`, `PATCH /api/tareas/:id`.
+
+Endpoints: `GET /health`, `GET /metrics`, `GET/POST /api/tareas`, `PATCH /api/tareas/:id`, `DELETE /api/tareas/:id`.
 
 Con Docker:
+
 ```bash
 docker build -t tareas-devops .
 docker run -p 3000:3000 tareas-devops
 ```
 
-## Subirlo a GitHub y activar el pipeline
-1. Crea un repositorio **público** vacío en GitHub (sin README).
-2. En la carpeta de la plantilla:
-   ```bash
-   git init
-   git add .
-   git commit -m "Plantilla inicial"
-   git branch -M main
-   git remote add origin https://github.com/TU_USUARIO/TU_REPO.git
-   git push -u origin main
-   ```
-3. En GitHub: **Settings → Pages → Source: GitHub Actions**.
-4. Abre la pestaña **Actions**: verás el workflow *CI/CD* ejecutándose. Cuando termine, la URL de tu página aparece en el job *Despliegue a GitHub Pages*.
+## Pipeline: explicación de cada etapa
 
-## Práctica 3 — qué debes agregar
-- Al menos **2 pruebas nuevas** (por ejemplo: borrar tareas, validar títulos largos).
-- Una funcionalidad nueva pequeña con su prueba (ej. `DELETE /api/tareas/:id`).
-- Provocar a propósito una prueba fallida, mostrar que el pipeline se pone en **rojo**, corregirla y mostrarlo en **verde**.
-- Completar este README con la explicación de cada etapa del pipeline.
+El workflow (`.github/workflows/ci.yml`) se ejecuta en cada `push` y `pull_request` hacia `main`. Tiene dos jobs.
 
-## Proyecto Final — cómo extenderla
-- Persistencia con **SQLite** (o MongoDB) en lugar del arreglo en memoria.
-- Publicar la imagen en **GitHub Container Registry** (`ghcr.io`) desde el pipeline.
-- Análisis estático real (ESLint) y umbral de cobertura mínima.
-- Monitoreo: usar `/metrics` y los logs JSON; definir al menos una **alerta** (ej. errores > 0).
-- Documentar: guía de instalación, manual de operaciones y lecciones aprendidas.
+### Job 1: Build y pruebas (`build-test`)
+
+| Paso | Qué hace |
+|---|---|
+| `actions/checkout@v4` | Descarga el código del repositorio en el runner. |
+| `actions/setup-node@v4` | Instala Node.js 20. |
+| `npm install` | Instala las dependencias (Express, Jest, Supertest). |
+| Revisión estática (`npm run lint`) | Verifica que `src/app.js` y `src/server.js` no tengan errores de sintaxis. |
+| Pruebas con cobertura (`npm test`) | Ejecuta Jest con cobertura. Si una prueba falla, el job termina en rojo. |
+| Construir imagen Docker | Construye la imagen con el `Dockerfile`, etiquetada con el SHA del commit. |
+
+### Job 2: Despliegue a GitHub Pages (`deploy-pages`)
+
+- **`needs: build-test`**: solo corre si el job anterior pasó. Si las pruebas fallan, no se despliega.
+- **`if`**: solo se ejecuta en `push` a `main`, no en pull requests.
+- **Pasos**: `checkout` → `configure-pages` (prepara Pages) → `upload-pages-artifact` (empaqueta la carpeta `public`) → `deploy-pages` (publica el sitio y devuelve la URL).
+- **Permisos** (`pages: write`, `id-token: write`): necesarios para que el workflow pueda publicar.
+
+Nota: GitHub Pages solo sirve archivos estáticos, por eso el sitio publicado no muestra la lista de tareas; la API completa funciona con `npm start`.
+
+## Cambios realizados en la Práctica 3
+
+1. **Nuevo endpoint** `DELETE /api/tareas/:id` (devuelve la tarea eliminada o 404).
+2. **Validación**: los títulos de más de 100 caracteres devuelven 400.
+3. **Corrección de ids**: se usa un contador independiente (`siguienteId`) en vez de `tareas.length + 1`, para no repetir ids tras borrar tareas.
+4. **4 pruebas nuevas**: título largo, borrar tarea existente, borrar tarea inexistente y ids sin repetirse. Total: 10 pruebas, cobertura de 95.83 % en sentencias y 100 % en funciones y líneas.
+
+## Resumen del ciclo verde → rojo → verde
+
+| Ejecución | Commit | Resultado | Motivo |
+|---|---|---|---|
+| #1 | Unir historial remoto con la plantilla | Rojo | GitHub Pages aún no estaba configurado. |
+| #2 | Disparar pipeline | Verde | Línea base funcionando. |
+| #3 | Agregar DELETE, validación y pruebas nuevas | Verde | Código y pruebas nuevas correctas. |
+| #4 | Romper prueba a propósito para demostrar pipeline en rojo | Verde | El cambio no rompía ninguna prueba. |
+| #5 | Romper prueba a propósito (intento 2) | **Rojo** | Se esperaba `500` en `/health` y se recibió `200`. El despliegue fue omitido. |
+| #6 | Corregir prueba: pipeline vuelve a verde | Verde | Se restauró `toBe(200)`. |
+
+## Guía de contribución
+
+1. Crear una rama a partir de `main`.
+2. Ejecutar `npm test` en local antes de hacer commit.
+3. Abrir un pull request hacia `main`; el pipeline debe salir en verde.
+4. Hacer merge solo si las pruebas pasan.
+
+## Instrucciones de despliegue
+
+1. En el repositorio: **Settings → Pages → Source: GitHub Actions**.
+2. Hacer `push` a `main`.
+3. En la pestaña **Actions**, esperar los dos jobs en verde; la URL del sitio aparece en el job *Despliegue a GitHub Pages*.
+
+## Evidencia (capturas)
+
+### Pipeline: verde → rojo → verde
+![Historial de ejecuciones en Actions](docs/capturas/01-actions-verde-rojo-verde.png)
+
+### Fallo a propósito (ejecución #5)
+El log muestra `Expected: 500` y `Received: 200`; el despliegue a Pages fue omitido.
+
+![Detalle del paso fallido](docs/capturas/02-detalle-rojo-expected-received.png)
+
+### Pruebas locales y cobertura
+![npm test con 10 pruebas](docs/capturas/03-npm-test-10-pruebas.png)
+
+### GitHub Pages
+![Configuración de Pages](docs/capturas/04-pages-configurado.png)
+
+![Sitio publicado](docs/capturas/05-sitio-publicado.png)
