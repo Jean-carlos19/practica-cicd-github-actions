@@ -39,4 +39,33 @@ describe('API de tareas', () => {
     expect(r.body.tareas).toBe(1);
     expect(r.body.solicitudes).toBeGreaterThanOrEqual(2);
   });
+
+  // ---- Pruebas nuevas (Práctica 3) ----
+
+  test('POST /api/tareas rechaza títulos de más de 100 caracteres', async () => {
+    const r = await request(app).post('/api/tareas').send({ titulo: 'x'.repeat(101) });
+    expect(r.status).toBe(400);
+  });
+
+  test('DELETE /api/tareas/:id elimina una tarea existente', async () => {
+    await request(app).post('/api/tareas').send({ titulo: 'Borrar esta' });
+    const r = await request(app).delete('/api/tareas/1');
+    expect(r.status).toBe(200);
+    expect(r.body.titulo).toBe('Borrar esta');
+    const lista = await request(app).get('/api/tareas');
+    expect(lista.body).toHaveLength(0);
+  });
+
+  test('DELETE de una tarea inexistente devuelve 404', async () => {
+    const r = await request(app).delete('/api/tareas/999');
+    expect(r.status).toBe(404);
+  });
+
+  test('los ids no se repiten después de borrar una tarea', async () => {
+    await request(app).post('/api/tareas').send({ titulo: 'A' });
+    await request(app).post('/api/tareas').send({ titulo: 'B' });
+    await request(app).delete('/api/tareas/1');
+    const nueva = await request(app).post('/api/tareas').send({ titulo: 'C' });
+    expect(nueva.body.id).toBe(3);
+  });
 });
